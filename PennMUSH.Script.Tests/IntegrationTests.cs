@@ -245,6 +245,27 @@ public class IntegrationTests
                 var healCmd = server.Dispatcher.Dispatch(wiz.Id, "+heal me 25", db);
                 Assert.Single(healCmd.TargetedNotifications);
                 Assert.Equal("Wiz healed +25 -> 125 HP", healCmd.TargetedNotifications[0].Message);
+
+                // @script/func, @script/funcs, @script/unfunc + builtin protection + DestroyObject cleanup
+                var builtinDeny = server.Dispatcher.Dispatch(wiz.Id, $"@script/func ADD={hostObj.Id}/Boost", db);
+                Assert.Contains(builtinDeny.Notifications, n => n.Contains("Cannot override built-in", StringComparison.Ordinal));
+
+                var funcCtx = server.Dispatcher.Dispatch(wiz.Id, $"@script/func heal_me={wiz.Id}/Heal", db);
+                Assert.Contains(funcCtx.Notifications, n => n.Contains("Registered function HEAL_ME()", StringComparison.Ordinal));
+                Assert.Equal("Wiz healed +10 -> 135 HP", server.Evaluator.Evaluate("[heal_me(me, 10)]", new EvaluationContext(wiz.Id, wiz.Id)));
+
+                var funcsCtx = server.Dispatcher.Dispatch(wiz.Id, "@script/funcs", db);
+                Assert.Contains(funcsCtx.Notifications, n => n.Contains("HEAL_ME()", StringComparison.Ordinal));
+
+                var unfuncCtx = server.Dispatcher.Dispatch(wiz.Id, "@script/unfunc heal_me", db);
+                Assert.Contains(unfuncCtx.Notifications, n => n.Contains("Unregistered function HEAL_ME()", StringComparison.Ordinal));
+                Assert.False(server.Functions.HasFunction("HEAL_ME"));
+
+                // Binding on destroyed object is automatically unregistered
+                server.Dispatcher.Dispatch(wiz.Id, $"@script/func boost_fn={hostObj.Id}/Boost", db);
+                Assert.True(server.Functions.HasFunction("BOOST_FN"));
+                Assert.True(db.DestroyObject(hostObj.Id));
+                Assert.False(server.Functions.HasFunction("BOOST_FN"));
             }
             finally
             {

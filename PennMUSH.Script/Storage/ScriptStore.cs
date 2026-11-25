@@ -53,6 +53,13 @@ public sealed class ScriptStore : IDisposable
                 state_json TEXT NOT NULL,
                 compiler_version INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS script_functions (
+                func_name TEXT PRIMARY KEY COLLATE NOCASE,
+                object_id INTEGER NOT NULL,
+                method_name TEXT NOT NULL,
+                created_by INTEGER NOT NULL
+            );
         ";
         cmd.ExecuteNonQuery();
     }
@@ -203,14 +210,78 @@ public sealed class ScriptStore : IDisposable
         }
     }
 
-    public void DeleteObjectData(int objectId)
+    public IReadOnlyList<string> DeleteObjectData(int objectId)
+    {
+        lock (_lock)
+        {
+            var removedFuncs = new List<string>();
+            using (var sel = _conn.CreateCommand())
+            {
+                sel.CommandText = "SELECT func_name FROM script_functions WHERE object_id = $id;";
+                sel.Parameters.AddWithValue("$id", objectId);
+                using var r = sel.ExecuteReader();
+                while (r.Read())
+                    removedFuncs.Add(r.GetString(0));
+            }
+            using (var delFn = _conn.CreateCommand())
+            {
+                delFn.CommandText = "DELETE FROM script_functions WHERE object_id = $id;";
+                delFn.Parameters.AddWithValue("$id", objectId);
+                delFn.ExecuteNonQuery();
+            }
+            using (var cmd = _conn.CreateCommand())
+            {
+                cmd.CommandText = "DELETE FROM scripts WHERE object_id = $id;";
+                cmd.Parameters.AddWithValue("$id", objectId);
+                cmd.ExecuteNonQuery();
+            }
+            return removedFuncs;
+        }
+    }
+
+    public void SaveBoundFunction(string funcName, int objectId, string methodName, int createdBy)
     {
         lock (_lock)
         {
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM scripts WHERE object_id = $id;";
+            cmd.CommandText = @"
+                INSERT INTO script_functions (func_name, object_id, method_name, created_by)
+                VALUES ($fn, $id, $method, $by)
+                ON CONFLICT(func_name) DO UPDATE SET
+                    object_id = excluded.object_id,
+                    method_name = excluded.method_name,
+                    created_by = excluded.created_by;
+            ";
+            cmd.Parameters.AddWithValue("$fn", funcName.ToUpperInvariant());
             cmd.Parameters.AddWithValue("$id", objectId);
+            cmd.Parameters.AddWithValue("$method", methodName);
+            cmd.Parameters.AddWithValue("$by", createdBy);
             cmd.ExecuteNonQuery();
+        }
+    }
+
+    public bool DeleteBoundFunction(string funcName)
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM script_functions WHERE func_name = $fn;";
+            cmd.Parameters.AddWithValue("$fn", funcName);
+            return cmd.ExecuteNonQuery() > 0;
+        }
+    }
+
+    public IReadOnlyList<(string FuncName, int ObjectId, string MethodName)> ListBoundFunctions()
+    {
+        lock (_lock)
+        {
+            var list = new List<(string, int, string)>();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT func_name, object_id, method_name FROM script_functions ORDER BY func_name;";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add((r.GetString(0), r.GetInt32(1), r.GetString(2)));
+            return list;
         }
     }
 

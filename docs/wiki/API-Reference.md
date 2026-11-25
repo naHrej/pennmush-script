@@ -12,6 +12,9 @@
 | `@script/del <obj>/<method>` | Delete a method |
 | `@script/ps` (or `@script/tasks`) | List pending `after()` / `Sleep()` tasks |
 | `@script/kill <taskId>` | Cancel a pending task (Wizard-only) |
+| `@script/func <fn>=<obj>/<method>` | Bind a custom PennMUSH softcode function `<fn>()` to a script method (Wizard-only, persisted) |
+| `@script/unfunc <fn>` | Unregister a script-backed softcode function (Wizard-only) |
+| `@script/funcs` | List all script-backed softcode functions |
 | `@script/eval <code>` | Evaluate an expression or statement block immediately (Wizard-only) |
 
 ## 2. Softcode Function
