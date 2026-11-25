@@ -28,4 +28,11 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
   </ItemGroup>
 
+  <Target Name="CopyPluginToPennMUSH" AfterTargets="Build" Condition="Exists('..\..\pennmush-dotnet\plugins')">
+    <ItemGroup>
+      <PluginFiles Include="$(TargetDir)$(TargetName).dll;$(TargetDir)$(TargetName).pdb;$(TargetDir)$(TargetName).deps.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginFiles)" DestinationFolder="..\..\pennmush-dotnet\plugins" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

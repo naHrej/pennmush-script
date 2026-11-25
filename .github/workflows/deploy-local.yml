@@ -1,0 +1,35 @@
+name: Auto-Build and Deploy to Local Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build PennMUSH.Script and Deploy Plugin
+    runs-on: [self-hosted, linux, pennmush-script]
+
+    steps:
+      - name: Update local repository
+        shell: bash
+        run: |
+          cd /home/dsantos/deploy/pennmush-script
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+      - name: Build PennMUSH.Script (auto-copies to pennmush-dotnet plugins)
+        shell: bash
+        run: |
+          dotnet build /home/dsantos/deploy/pennmush-script/PennMUSH.Script/PennMUSH.Script.csproj -c Debug
+
+      - name: Hot-reboot local PennMUSH server
+        shell: bash
+        run: |
+          if RESP=$(curl -sf --max-time 5 -X POST http://localhost:5119/reboot); then
+            echo "PennMUSH Server hot-reboot triggered successfully: $RESP"
+          else
+            echo "Local PennMUSH server is not currently reachable at http://localhost:5119. Plugin files updated for next server startup."
+          fi
