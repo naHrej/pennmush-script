@@ -38,8 +38,8 @@ public sealed class ScriptExtension : IExtension
         _store = new ScriptStore(Path.Combine(host.DataDirectory, "script.db"));
         _bridge = new MushScriptBridge(host, _store, ScheduleTask);
 
-        foreach (string flag in AttributeMarshal.AllTypeFlags)
-            host.RegisterAttributeFlag(flag);
+        foreach (var (flag, shortName) in AttributeMarshal.AllTypeFlagDefinitions)
+            host.RegisterAttributeFlag(flag, shortName);
 
         host.RegisterCommand(new ScriptCommandHandler(this), "@script");
         host.RegisterCommand(new ProgramCommandHandler(this), "@program", "@prog");
