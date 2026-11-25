@@ -78,23 +78,31 @@ public sealed class ScriptExtension : IExtension
 
     private string InvokeScriptFunction(EvaluationContext ctx, string[] args)
     {
-        if (args.Length < 1 || string.IsNullOrWhiteSpace(args[0]))
-            return "#-1 SCRIPT() REQUIRES OBJECT/METHOD";
+        try
+        {
+            if (args.Length < 1 || string.IsNullOrWhiteSpace(args[0]))
+                return "#-1 SCRIPT() REQUIRES OBJECT/METHOD";
 
-        if (!TryParseObjMethod(ctx.Executor, args[0], out var targetObj, out var methodName))
-            return "#-1 INVALID OBJECT/METHOD";
+            if (!TryParseObjMethod(ctx.Executor, args[0], out var targetObj, out var methodName))
+                return "#-1 INVALID OBJECT/METHOD";
 
-        var resolved = _bridge.ResolveMethod(targetObj.Id.Value, methodName);
-        if (resolved == null)
-            return "#-1 METHOD NOT FOUND";
+            var resolved = _bridge.ResolveMethod(targetObj.Id.Value, methodName);
+            if (resolved == null)
+                return "#-1 METHOD NOT FOUND";
 
-        if (!_bridge.CanCallMethod(resolved.DefiningDbref, ctx.Executor.Value, resolved.Access))
-            return "#-1 PERMISSION DENIED";
+            if (!_bridge.CanCallMethod(resolved.DefiningDbref, ctx.Executor.Value, resolved.Access))
+                return "#-1 PERMISSION DENIED";
 
-        var callArgs = args.Skip(1).Select(ScriptValue.FromString).ToList();
-        var vm = new ScriptVm(_bridge);
-        var result = vm.Execute(resolved.Bytecode, targetObj.Id.Value, ctx.Executor.Value, ctx.Enactor.Value, callArgs);
-        return HandleVmResult(result);
+            var callArgs = args.Skip(1).Select(ScriptValue.FromString).ToList();
+            var vm = new ScriptVm(_bridge);
+            var result = vm.Execute(resolved.Bytecode, targetObj.Id.Value, ctx.Executor.Value, ctx.Enactor.Value, callArgs);
+            return HandleVmResult(result);
+        }
+        catch (Exception ex)
+        {
+            _host.Log($"Unhandled exception in SCRIPT(): {ex}");
+            return $"#-1 SCRIPT ERROR: {ex.Message}";
+        }
     }
 
     private string HandleVmResult(VmExecutionResult result)
