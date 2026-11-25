@@ -9,7 +9,7 @@
 | `bool` | `true`, `false` | First-class boolean |
 | `string` | `"hello"`, `$"hi {name}"` | Immutable string; 0-indexed (`s[0]`, `s[1..4]`) |
 | `null` | `null` | Null value |
-| `obj` | `#0`, `#123`, `#-1` | PennMUSH `dbref` reference |
+| `obj` | `#0`, `#123`, `#-1`, `$combat` | PennMUSH `dbref` reference (or global `$name` lookup via System Object `#3`) |
 | `list` | `[1, "a", #2]`, `[a, ...rest]` | 0-indexed heterogeneous list (CoW value type) |
 | `map` | `{ "hp": 100, "mp": 50 }`, `{:}` | Ordered key-value map (`{:}` = empty, CoW value type) |
 | `error` | `E_PERM`, `E_TYPE`, `E_RANGE` | First-class throwable error value |

@@ -84,6 +84,12 @@ public sealed class Lexer
                 continue;
             }
 
+            if (c == '$' && (char.IsLetter(Peek(1)) || Peek(1) == '_'))
+            {
+                ReadGlobalObjRef(line, col);
+                continue;
+            }
+
             if (char.IsDigit(c))
             {
                 ReadNumber(line, col);
@@ -251,6 +257,7 @@ public sealed class Lexer
                 continue;
             }
             if (c == '#') { ReadObjLiteral(line, col); continue; }
+            if (c == '$' && (char.IsLetter(Peek(1)) || Peek(1) == '_')) { ReadGlobalObjRef(line, col); continue; }
             if (char.IsDigit(c)) { ReadNumber(line, col); continue; }
             if (char.IsLetter(c) || c == '_') { ReadIdentifierOrKeyword(line, col); continue; }
             ReadOperatorOrDelimiter(line, col);
@@ -273,6 +280,16 @@ public sealed class Lexer
             '0' => '\0',
             _ => throw new ScriptCompileException($"Unknown escape sequence '\\{esc}'.", line, col)
         };
+    }
+
+    private void ReadGlobalObjRef(int line, int col)
+    {
+        Advance(); // $
+        int start = _pos;
+        while (!IsAtEnd && (char.IsLetterOrDigit(Peek()) || Peek() == '_'))
+            Advance();
+        string name = _src[start.._pos];
+        _tokens.Add(new Token(TokenKind.GlobalObjRef, $"${name}", line, col));
     }
 
     private void ReadObjLiteral(int line, int col)

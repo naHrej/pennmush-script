@@ -15,6 +15,7 @@ public enum TokenKind
     InterpExprEnd,
     InterpEnd,
     ObjLiteral,
+    GlobalObjRef,
     ErrorLiteral,
 
     // Keywords

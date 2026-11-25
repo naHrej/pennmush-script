@@ -266,6 +266,21 @@ public class IntegrationTests
                 Assert.True(server.Functions.HasFunction("BOOST_FN"));
                 Assert.True(db.DestroyObject(hostObj.Id));
                 Assert.False(server.Functions.HasFunction("BOOST_FN"));
+
+                // Global $name object references via System Object (#3)
+                var sysObj = db.GetObject(new Dbref(3))!;
+                var utilObj = db.CreateObject("Util", ObjectType.Thing, wiz.Id);
+                sysObj.SetAttribute("UTIL", utilObj.Id.ToString(), wiz.Id);
+                server.Dispatcher.Dispatch(wiz.Id, $"@prog {utilObj.Id}/Double(n)=public", db);
+                server.TryHandleCapturedInput(wiz.Id, "return ToInt(n) * 2;");
+                server.TryHandleCapturedInput(wiz.Id, ".");
+
+                server.Dispatcher.Dispatch(wiz.Id, "@prog me/UseGlobal=public", db);
+                server.TryHandleCapturedInput(wiz.Id, "return $\"{$util.Name}:{$util.Double(21)}\";");
+                server.TryHandleCapturedInput(wiz.Id, ".");
+
+                Assert.Equal("Util:42", server.Evaluator.Evaluate("[script(me/UseGlobal)]", new EvaluationContext(wiz.Id, wiz.Id)));
+                Assert.Equal("42", server.Evaluator.Evaluate("[script($util/Double, 21)]", new EvaluationContext(wiz.Id, wiz.Id)));
             }
             finally
             {

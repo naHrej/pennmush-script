@@ -85,6 +85,15 @@ Every method has an access modifier (default `private`):
 - Scripts always execute with the **permissions of the host object** (`TaskPerms()`).
 - Inheritance walks the PennMUSH `@parent` chain (`base.Method(...)` calls the parent implementation). `@zone` remains PennMUSH-only.
 
+### Global Object References (`$name`)
+Instead of hardcoding dbrefs like `#42`, register named objects as attributes on the **System Object (`#3`)**:
+```text
+&COMBAT #3=#42
+```
+Once registered, `$combat` resolves to `#42` everywhere:
+- In PennMUSH: `examine $combat`, `think [script($combat/Heal, %#, 25)]`
+- In `PennMUSH.Script`: `$combat.Heal(player, 25);` or `$"Using {$combat.Name}"`
+
 ---
 
 ## 5. Debugging & Managing Scripts
