@@ -941,6 +941,29 @@ public sealed class BytecodeCompiler
                 Emit(OpCode.SetProp, 0, 0, line);
                 break;
             }
+            case DynamicMemberExpr dmem:
+            {
+                int tmp = DeclareTempSlot();
+                Emit(OpCode.StoreLocal, tmp, 0, line);
+                Emit(OpCode.Pop, 0, 0, line);
+                CompileExpr(dmem.Target);
+                CompileExpr(dmem.NameExpr);
+                Emit(OpCode.LoadLocal, tmp, 0, line);
+                Emit(OpCode.SetProp, 0, 0, line);
+                break;
+            }
+            case IndexExpr idx:
+            {
+                int tmp = DeclareTempSlot();
+                Emit(OpCode.StoreLocal, tmp, 0, line);
+                Emit(OpCode.Pop, 0, 0, line);
+                CompileExpr(idx.Target);
+                CompileExpr(idx.Index);
+                Emit(OpCode.LoadLocal, tmp, 0, line);
+                Emit(OpCode.SetIndex, idx.FromEnd ? 1 : 0, 0, line);
+                StoreBackLvalue(idx.Target, line);
+                break;
+            }
             default:
                 throw new ScriptCompileException("Unsupported CoW lvalue target.", line);
         }
@@ -1018,12 +1041,9 @@ public sealed class BytecodeCompiler
             int argc2 = EmitCallArgs(call.Arguments, hasSpread, call.Line);
             Emit(OpCode.CallMethod, AddConst(ScriptValue.FromString(mem.Name)), argc2, call.Line);
 
-            // Lvalue CoW ergonomics: if calling a mutating collection method on an identifier/member, rebind it!
-            if (MutatingCollectionMethods.Contains(mem.Name) && (mem.Target is IdentifierExpr || mem.Target is MemberExpr))
+            // Lvalue CoW ergonomics: if calling a mutating collection method on an identifier/member/index, rebind it!
+            if (MutatingCollectionMethods.Contains(mem.Name) && (mem.Target is IdentifierExpr || mem.Target is MemberExpr || mem.Target is DynamicMemberExpr || mem.Target is IndexExpr))
             {
-                // CallMethod leaves the mutated collection (or Pop/Remove return? Wait: for CoW mutators,
-                // let's have CallMethod push (newCollection, returnValue) or handle it cleanly!
-                // Even cleaner: for Pop(), user expects the popped element, while Add/Remove/Insert/Clear/Sort/Reverse return the new collection!
                 if (mem.Name != "Pop")
                     StoreBackLvalue(mem.Target, call.Line);
             }

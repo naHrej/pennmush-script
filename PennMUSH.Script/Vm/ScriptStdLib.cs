@@ -74,6 +74,12 @@ public static class ScriptStdLib
             case "TicksLeft":
                 result = ScriptValue.FromInt(vm.RemainingTicks);
                 return true;
+            case "CallerPerms":
+                result = ScriptValue.FromObj(frame.CallerDbref);
+                return true;
+            case "TaskPerms":
+                result = ScriptValue.FromObj(frame.ThisDbref);
+                return true;
             case "Callers":
                 result = vm.GetCallersList();
                 return true;

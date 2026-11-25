@@ -223,6 +223,14 @@ public class IntegrationTests
 
                 var deniedEval = server.Dispatcher.Dispatch(mortal1.Id, "@script/eval 1 + 1", db);
                 Assert.Contains("Permission denied.", deniedEval.Notifications);
+
+                // Nested CoW mutation directly on typed map/list attributes
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prop {hostObj.Id}/Stats=map:{{\"hp\":50}}", db);
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prog {hostObj.Id}/Boost=public", db);
+                server.TryHandleCapturedInput(mortal1.Id, "this.Stats[\"hp\"] = 120;");
+                server.TryHandleCapturedInput(mortal1.Id, "return this.Stats[\"hp\"];");
+                server.TryHandleCapturedInput(mortal1.Id, ".");
+                Assert.Equal("120", server.Evaluator.Evaluate($"[script({hostObj.Id}/Boost)]", new EvaluationContext(wiz.Id, wiz.Id)));
             }
             finally
             {

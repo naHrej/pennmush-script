@@ -197,6 +197,22 @@ public class LanguageAndVmTests
         Assert.Equal("28:true:none", res.ReturnValue.AsString());
     }
 
+    [Fact]
+    public void NestedCowLvalue_And_PermHelpers_Work()
+    {
+        var res = Run("""
+            var matrix = [[1, 2], [3, 4]];
+            matrix[0][1] = 99;
+            matrix[1].Add(5);
+            var stats = { "nested": { "hp": 50 } };
+            stats["nested"]["hp"] = 75;
+            return $"{matrix[0][1]}:{matrix[1].Length}:{stats["nested"]["hp"]}:{TaskPerms()}:{CallerPerms()}";
+            """);
+
+        Assert.Equal(VmExecutionStatus.Completed, res.Status);
+        Assert.Equal("99:3:75:#1:#1", res.ReturnValue.AsString());
+    }
+
     private class NullBridge : IScriptHostBridge
     {
         public virtual ResolvedMethod? ResolveMethod(int targetDbref, string methodName, bool startAtParent = false) => null;
