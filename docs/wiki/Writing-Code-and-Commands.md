@@ -97,4 +97,7 @@ Every method has an access modifier (default `private`):
 | `@script/del <obj>/<method>` | Delete a method from `<obj>` |
 | `@script/ps` | List pending `after()` / `Sleep()` tasks |
 | `@script/kill <taskId>` | Cancel a pending task (Wizard-only) |
+| `@script/func <fn>=<obj>/<method>` | Expose a script method as a first-class `[<fn>(...)]` softcode function (Wizard-only) |
+| `@script/unfunc <fn>` | Unregister a script-backed function (Wizard-only) |
+| `@script/funcs` | List registered script-backed functions |
 | `@script/eval <code>` | Evaluate a one-off expression or block immediately (Wizard-only) |

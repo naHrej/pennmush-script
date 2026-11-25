@@ -45,8 +45,13 @@ public sealed class ScriptExtension : IExtension
         host.RegisterCommand(new ProgramCommandHandler(this), "@program", "@prog");
         host.RegisterCommand(new PropCommandHandler(this), "@prop");
         host.RegisterFunction("SCRIPT", InvokeScriptFunction);
-        host.OnObjectDestroyed(dbref => _store.DeleteObjectData(dbref.Value));
+        host.OnObjectDestroyed(dbref =>
+        {
+            foreach (string fnName in _store.DeleteObjectData(dbref.Value))
+                _host.UnregisterFunction(fnName);
+        });
 
+        RehydrateBoundFunctions();
         RehydrateSuspendedTasks();
         host.Log("Initialized PennMUSH.Script DSL.");
     }
@@ -78,31 +83,52 @@ public sealed class ScriptExtension : IExtension
 
     private string InvokeScriptFunction(EvaluationContext ctx, string[] args)
     {
+        if (args.Length < 1 || string.IsNullOrWhiteSpace(args[0]))
+            return "#-1 SCRIPT() REQUIRES OBJECT/METHOD";
+
+        if (!TryParseObjMethod(ctx.Executor, args[0], out var targetObj, out var methodName))
+            return "#-1 INVALID OBJECT/METHOD";
+
+        var callArgs = args.Skip(1).Select(ScriptValue.FromString).ToList();
+        return ExecuteScriptMethod(targetObj.Id.Value, methodName, ctx, callArgs);
+    }
+
+    private string ExecuteScriptMethod(int targetDbref, string methodName, EvaluationContext ctx, IReadOnlyList<ScriptValue> callArgs)
+    {
         try
         {
-            if (args.Length < 1 || string.IsNullOrWhiteSpace(args[0]))
-                return "#-1 SCRIPT() REQUIRES OBJECT/METHOD";
-
-            if (!TryParseObjMethod(ctx.Executor, args[0], out var targetObj, out var methodName))
-                return "#-1 INVALID OBJECT/METHOD";
-
-            var resolved = _bridge.ResolveMethod(targetObj.Id.Value, methodName);
+            var resolved = _bridge.ResolveMethod(targetDbref, methodName);
             if (resolved == null)
                 return "#-1 METHOD NOT FOUND";
 
             if (!_bridge.CanCallMethod(resolved.DefiningDbref, ctx.Executor.Value, resolved.Access))
                 return "#-1 PERMISSION DENIED";
 
-            var callArgs = args.Skip(1).Select(ScriptValue.FromString).ToList();
             var vm = new ScriptVm(_bridge);
-            var result = vm.Execute(resolved.Bytecode, targetObj.Id.Value, ctx.Executor.Value, ctx.Enactor.Value, callArgs);
+            var result = vm.Execute(resolved.Bytecode, targetDbref, ctx.Executor.Value, ctx.Enactor.Value, callArgs);
             return HandleVmResult(result);
         }
         catch (Exception ex)
         {
-            _host.Log($"Unhandled exception in SCRIPT(): {ex}");
+            _host.Log($"Unhandled exception in script method #{targetDbref}/{methodName}: {ex}");
             return $"#-1 SCRIPT ERROR: {ex.Message}";
         }
+    }
+
+    internal void RegisterBoundFunction(string funcName, int objectId, string methodName)
+    {
+        string upper = funcName.ToUpperInvariant();
+        _host.RegisterFunction(upper, (ctx, args) =>
+        {
+            var callArgs = args.Select(ScriptValue.FromString).ToList();
+            return ExecuteScriptMethod(objectId, methodName, ctx, callArgs);
+        });
+    }
+
+    private void RehydrateBoundFunctions()
+    {
+        foreach (var (funcName, objId, methodName) in _store.ListBoundFunctions())
+            RegisterBoundFunction(funcName, objId, methodName);
     }
 
     private string HandleVmResult(VmExecutionResult result)
@@ -181,6 +207,57 @@ public sealed class ScriptExtension : IExtension
         {
             var actor = db.GetObject(context.Executor);
             if (actor == null) return false;
+
+            if (context.Switches.Contains("FUNCS", StringComparer.OrdinalIgnoreCase))
+            {
+                var funcs = _ext.Store.ListBoundFunctions();
+                if (funcs.Count == 0) { context.Notify("No script-backed functions registered."); return true; }
+                foreach (var (fn, objId, mName) in funcs)
+                    context.Notify($"  {fn}() -> #{objId}/{mName}");
+                return true;
+            }
+
+            if (context.Switches.Contains("FUNC", StringComparer.OrdinalIgnoreCase))
+            {
+                if (!actor.IsWizard) { context.Notify("Permission denied."); return false; }
+                string fnName = context.LeftArg.Trim().ToUpperInvariant();
+                if (string.IsNullOrEmpty(fnName) || !fnName.All(c => char.IsLetterOrDigit(c) || c == '_'))
+                {
+                    context.Notify("Usage: @script/func <function_name>=<object>/<method>");
+                    return false;
+                }
+                bool alreadyBound = _ext.Store.ListBoundFunctions().Any(f => f.FuncName.Equals(fnName, StringComparison.OrdinalIgnoreCase));
+                if (!alreadyBound && _ext.Host.Functions.HasBuiltin(fnName))
+                {
+                    context.Notify($"Cannot override built-in function '{fnName}'.");
+                    return false;
+                }
+                if (!_ext.TryParseObjMethod(context.Executor, context.RightArg, out var fnTarget, out var fnMethod))
+                {
+                    context.Notify("Usage: @script/func <function_name>=<object>/<method>");
+                    return false;
+                }
+                if (_ext._bridge.ResolveMethod(fnTarget.Id.Value, fnMethod) == null)
+                {
+                    context.Notify($"Method '{fnMethod}' not found on {fnTarget.Name}({fnTarget.Id}).");
+                    return false;
+                }
+                _ext.Store.SaveBoundFunction(fnName, fnTarget.Id.Value, fnMethod, context.Executor.Value);
+                _ext.RegisterBoundFunction(fnName, fnTarget.Id.Value, fnMethod);
+                context.Notify($"Registered function {fnName}() -> {fnTarget.Name}({fnTarget.Id})/{fnMethod}.");
+                return true;
+            }
+
+            if (context.Switches.Contains("UNFUNC", StringComparer.OrdinalIgnoreCase))
+            {
+                if (!actor.IsWizard) { context.Notify("Permission denied."); return false; }
+                string fnName = context.LeftArg.Trim().ToUpperInvariant();
+                if (string.IsNullOrEmpty(fnName)) { context.Notify("Usage: @script/unfunc <function_name>"); return false; }
+                bool removed = _ext.Store.DeleteBoundFunction(fnName);
+                _ext.Host.UnregisterFunction(fnName);
+                context.Notify(removed ? $"Unregistered function {fnName}()." : $"Script function '{fnName}' not found.");
+                return removed;
+            }
 
             if (context.Switches.Contains("PS", StringComparer.OrdinalIgnoreCase)
                 || context.Switches.Contains("TASKS", StringComparer.OrdinalIgnoreCase))
