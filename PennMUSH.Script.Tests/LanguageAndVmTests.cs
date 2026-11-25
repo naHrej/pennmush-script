@@ -179,6 +179,7 @@ public class LanguageAndVmTests
         public string GetObjectName(int dbref) => $"#{dbref}";
         public IReadOnlyList<int> GetPlayers() => Array.Empty<int>();
         public IReadOnlyList<int> GetConnectedPlayers() => Array.Empty<int>();
+        public int MatchObject(int executorDbref, string name) => 1;
         public string EvalSoftcode(int executorDbref, int enactorDbref, string expr) => "";
         public string CallSoftcodeAttr(int executorDbref, int enactorDbref, int objDbref, string attrName, IReadOnlyList<ScriptValue> args) => "";
         public string GetSoftcodeAttr(int executorDbref, int objDbref, string attrName) => "";

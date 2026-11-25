@@ -185,6 +185,7 @@ public interface IScriptHostBridge
     string GetObjectName(int dbref);
     IReadOnlyList<int> GetPlayers();
     IReadOnlyList<int> GetConnectedPlayers();
+    int MatchObject(int executorDbref, string name);
 
     string EvalSoftcode(int executorDbref, int enactorDbref, string expr);
     string CallSoftcodeAttr(int executorDbref, int enactorDbref, int objDbref, string attrName, IReadOnlyList<ScriptValue> args);

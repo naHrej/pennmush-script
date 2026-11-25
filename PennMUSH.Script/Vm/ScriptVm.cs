@@ -477,7 +477,10 @@ public sealed class ScriptVm
             }
             catch (ScriptRuntimeException ex)
             {
-                if (HandleException(ScriptValue.FromError(ex.Code), ex.Message, stopFrameDepth, out var faultRes))
+                string locMsg = ins.Line > 0
+                    ? $"at #{frame.TargetDbref}/{frame.MethodName} line {ins.Line}: {ex.Message}"
+                    : ex.Message;
+                if (HandleException(ScriptValue.FromError(ex.Code), locMsg, stopFrameDepth, out var faultRes))
                     return faultRes!;
             }
         }

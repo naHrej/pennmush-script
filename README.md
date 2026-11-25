@@ -16,6 +16,7 @@ A sandboxed, C#-idiomatic MUSH scripting DSL extension (`IExtension`) for `pennm
 - `@program <object>/<method>[(p1, p2)][=<access>]` (alias `@prog`) — enters multi-line mode; end with `.` to compile & save or `@abort` to cancel.
 - `@script <object>/<method>=<access>` (`private`, `protected`, `internal`, `public`)
 - `@script/list <object>`, `@script/view <object>/<method>`, `@script/del <object>/<method>`
+- `@script/ps` (or `@script/tasks`), `@script/kill <taskId>` — inspect or cancel pending `after()` / `Sleep()` tasks
 
 ## Build & Test
 ```powershell

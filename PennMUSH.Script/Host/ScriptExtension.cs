@@ -64,6 +64,18 @@ public sealed class ScriptExtension : IExtension
     internal ScriptStore Store => _store;
     internal IExtensionHost Host => _host;
 
+    internal bool CancelTask(string taskId)
+    {
+        bool removedTimer = false;
+        if (_pendingTimers.TryRemove(taskId, out var timer))
+        {
+            timer.Dispose();
+            removedTimer = true;
+        }
+        _store.DeleteSuspendedTask(taskId);
+        return removedTimer;
+    }
+
     private string InvokeScriptFunction(EvaluationContext ctx, string[] args)
     {
         if (args.Length < 1 || string.IsNullOrWhiteSpace(args[0]))
@@ -161,6 +173,32 @@ public sealed class ScriptExtension : IExtension
         {
             var actor = db.GetObject(context.Executor);
             if (actor == null) return false;
+
+            if (context.Switches.Contains("PS", StringComparer.OrdinalIgnoreCase)
+                || context.Switches.Contains("TASKS", StringComparer.OrdinalIgnoreCase))
+            {
+                var tasks = _ext.Store.LoadSuspendedTasks();
+                if (tasks.Count == 0) { context.Notify("No suspended/scheduled script tasks."); return true; }
+                long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                foreach (var t in tasks)
+                {
+                    var top = t.Frames.Count > 0 ? t.Frames[^1] : null;
+                    double remSec = Math.Max(0, (t.ResumeAtMs - nowMs) / 1000.0);
+                    string target = top != null ? $"#{top.TargetDbref}/{top.MethodName}" : "<unknown>";
+                    context.Notify($"  {t.TaskId}  {target}  in {remSec:F1}s");
+                }
+                return true;
+            }
+
+            if (context.Switches.Contains("KILL", StringComparer.OrdinalIgnoreCase))
+            {
+                if (!actor.IsWizard) { context.Notify("Permission denied."); return false; }
+                string id = context.LeftArg.Trim();
+                if (string.IsNullOrEmpty(id)) { context.Notify("Usage: @script/kill <taskId>"); return false; }
+                bool canceled = _ext.CancelTask(id);
+                context.Notify(canceled ? $"Canceled script task {id}." : $"Task '{id}' not found.");
+                return canceled;
+            }
 
             if (context.Switches.Contains("LIST", StringComparer.OrdinalIgnoreCase))
             {
@@ -512,6 +550,7 @@ internal sealed class MushScriptBridge : IScriptHostBridge
     public string GetObjectName(int dbref) => _host.Database.GetObject(new Dbref(dbref))?.Name ?? "";
     public IReadOnlyList<int> GetPlayers() => _host.Database.GetAllObjects().Where(o => o.Type == ObjectType.Player).Select(o => o.Id.Value).ToList();
     public IReadOnlyList<int> GetConnectedPlayers() => _host.Database.GetAllObjects().Where(o => o.Type == ObjectType.Player && _host.Database.IsConnected(o.Id)).Select(o => o.Id.Value).ToList();
+    public int MatchObject(int executorDbref, string name) => _host.Database.MatchObject(new Dbref(executorDbref), name)?.Id.Value ?? -1;
 
     public string EvalSoftcode(int executorDbref, int enactorDbref, string expr)
         => _host.Evaluator.Evaluate(expr, new EvaluationContext(new Dbref(executorDbref), new Dbref(enactorDbref)));

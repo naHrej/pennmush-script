@@ -154,6 +154,16 @@ public static class ScriptStdLib
                     case "Tan": result = ScriptValue.FromFloat(Math.Tan(RequireArg(args, 0).AsFloat())); return true;
                     case "Log": result = ScriptValue.FromFloat(Math.Log(RequireArg(args, 0).AsFloat())); return true;
                     case "Exp": result = ScriptValue.FromFloat(Math.Exp(RequireArg(args, 0).AsFloat())); return true;
+                    case "Clamp":
+                    {
+                        double val = RequireArg(args, 0).AsFloat();
+                        double lo = RequireArg(args, 1).AsFloat();
+                        double hi = RequireArg(args, 2).AsFloat();
+                        result = args[0].Type == ScriptValueType.Int && args[1].Type == ScriptValueType.Int && args[2].Type == ScriptValueType.Int
+                            ? ScriptValue.FromInt(Math.Clamp(args[0].AsInt(), args[1].AsInt(), args[2].AsInt()))
+                            : ScriptValue.FromFloat(Math.Clamp(val, lo, hi));
+                        return true;
+                    }
                 }
                 break;
 
@@ -253,6 +263,7 @@ public static class ScriptStdLib
                     case "Name": result = ScriptValue.FromString(bridge.GetObjectName(RequireArg(args, 0).AsObj())); return true;
                     case "Players": result = ScriptValue.FromList(bridge.GetPlayers().Select(ScriptValue.FromObj)); return true;
                     case "Connected": result = ScriptValue.FromList(bridge.GetConnectedPlayers().Select(ScriptValue.FromObj)); return true;
+                    case "Match": result = ScriptValue.FromObj(bridge.MatchObject(frame.ThisDbref, RequireArg(args, 0).AsString())); return true;
                 }
                 break;
 
@@ -553,6 +564,12 @@ public static class ScriptStdLib
                 return true;
             case "LastIndexOf":
                 result = ScriptValue.FromInt(s.LastIndexOf(RequireArg(args, 0).AsString(), StringComparison.Ordinal));
+                return true;
+            case "PadLeft":
+                result = ScriptValue.FromString(s.PadLeft((int)RequireArg(args, 0).AsInt(), args.Count > 1 && args[1].AsString().Length > 0 ? args[1].AsString()[0] : ' '));
+                return true;
+            case "PadRight":
+                result = ScriptValue.FromString(s.PadRight((int)RequireArg(args, 0).AsInt(), args.Count > 1 && args[1].AsString().Length > 0 ? args[1].AsString()[0] : ' '));
                 return true;
             case "Substring":
             {

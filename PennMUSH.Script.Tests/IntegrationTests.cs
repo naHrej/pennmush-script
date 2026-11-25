@@ -199,6 +199,23 @@ public class IntegrationTests
                 while (hostObj.GetAttribute("HP")!.Value != "555" && DateTime.UtcNow < deadline)
                     System.Threading.Thread.Sleep(25);
                 Assert.Equal("555", hostObj.GetAttribute("HP")!.Value);
+
+                // @script/ps and @script/kill + Obj.Match + String.PadLeft
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prog {hostObj.Id}/LongWait=public", db);
+                server.TryHandleCapturedInput(mortal1.Id, "after (30) { this.HP = 1; }");
+                server.TryHandleCapturedInput(mortal1.Id, "return Obj.Match(\"Wiz\").Name.PadLeft(5, \"_\");");
+                server.TryHandleCapturedInput(mortal1.Id, ".");
+
+                string matchOut = server.Evaluator.Evaluate($"[script({hostObj.Id}/LongWait)]", new EvaluationContext(wiz.Id, wiz.Id));
+                Assert.Equal("__Wiz", matchOut);
+
+                var psCtx = server.Dispatcher.Dispatch(wiz.Id, "@script/ps", db);
+                Assert.Contains(psCtx.Notifications, n => n.Contains("LongWait", StringComparison.Ordinal));
+                string taskId = psCtx.Notifications[0].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+
+                var killCtx = server.Dispatcher.Dispatch(wiz.Id, $"@script/kill {taskId}", db);
+                Assert.Contains(killCtx.Notifications, n => n.Contains("Canceled", StringComparison.Ordinal));
+                Assert.Empty(ext.Store.LoadSuspendedTasks());
             }
             finally
             {
