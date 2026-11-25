@@ -231,6 +231,20 @@ public class IntegrationTests
                 server.TryHandleCapturedInput(mortal1.Id, "return this.Stats[\"hp\"];");
                 server.TryHandleCapturedInput(mortal1.Id, ".");
                 Assert.Equal("120", server.Evaluator.Evaluate($"[script({hostObj.Id}/Boost)]", new EvaluationContext(wiz.Id, wiz.Id)));
+
+                // Quickstart $command flow on player
+                server.Dispatcher.Dispatch(wiz.Id, "@prop me/HP=int:100", db);
+                server.Dispatcher.Dispatch(wiz.Id, "@prog me/Heal(targetName, amountStr)=public", db);
+                server.TryHandleCapturedInput(wiz.Id, "var target = Obj.Match(targetName);");
+                server.TryHandleCapturedInput(wiz.Id, "var amount = ToInt(amountStr);");
+                server.TryHandleCapturedInput(wiz.Id, "target.HP += amount;");
+                server.TryHandleCapturedInput(wiz.Id, "return $\"{target.Name} healed +{amount} -> {target.HP} HP\";");
+                server.TryHandleCapturedInput(wiz.Id, ".");
+                server.Dispatcher.Dispatch(wiz.Id, "&CMD_HEAL me=$+heal * *:@pemit %#=[script(me/Heal, %0, %1)]", db);
+
+                var healCmd = server.Dispatcher.Dispatch(wiz.Id, "+heal me 25", db);
+                Assert.Single(healCmd.TargetedNotifications);
+                Assert.Equal("Wiz healed +25 -> 125 HP", healCmd.TargetedNotifications[0].Message);
             }
             finally
             {
