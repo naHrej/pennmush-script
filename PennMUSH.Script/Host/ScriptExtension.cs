@@ -529,7 +529,11 @@ internal sealed class MushScriptBridge : IScriptHostBridge
     }
 
     public void DispatchCommand(int executorDbref, string command)
-        => _host.Dispatcher.Dispatch(new Dbref(executorDbref), command, _host.Database);
+    {
+        var context = _host.Dispatcher.Dispatch(new Dbref(executorDbref), command, _host.Database);
+        foreach (var note in context.TargetedNotifications)
+            _host.BroadcastNotification(note);
+    }
 
     public void NotifyPlayer(int playerDbref, string message) => _host.NotifyPlayer(new Dbref(playerDbref), message);
     public void Log(string message) => _host.Log(message);
