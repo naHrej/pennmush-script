@@ -27,6 +27,7 @@ public sealed record AfterStmt(Expr DelaySeconds, BlockStmt Body, int Line) : St
 public abstract record Expr(int Line);
 
 public sealed record LiteralExpr(ScriptValue Value, int Line) : Expr(Line);
+public sealed record GlobalObjRefExpr(string RefName, int Line) : Expr(Line);
 public sealed record IdentifierExpr(string Name, int Line) : Expr(Line);
 public sealed record ContextExpr(TokenKind Kind, int Line) : Expr(Line); // this, caller, player, args
 public sealed record BaseExpr(int Line) : Expr(Line);

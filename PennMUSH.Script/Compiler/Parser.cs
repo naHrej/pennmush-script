@@ -697,6 +697,7 @@ public sealed class Parser
             case TokenKind.FloatLiteral: Advance(); return new LiteralExpr(ScriptValue.FromFloat(t.FloatValue), t.Line);
             case TokenKind.StringLiteral: Advance(); return new LiteralExpr(ScriptValue.FromString(t.Lexeme), t.Line);
             case TokenKind.ObjLiteral: Advance(); return new LiteralExpr(ScriptValue.FromObj(t.ObjValue), t.Line);
+            case TokenKind.GlobalObjRef: Advance(); return new GlobalObjRefExpr(t.Lexeme, t.Line);
             case TokenKind.ErrorLiteral: Advance(); return new LiteralExpr(ScriptValue.FromError(t.ErrorValue), t.Line);
             case TokenKind.True: Advance(); return new LiteralExpr(ScriptValue.True, t.Line);
             case TokenKind.False: Advance(); return new LiteralExpr(ScriptValue.False, t.Line);

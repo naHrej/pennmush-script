@@ -555,6 +555,12 @@ public sealed class BytecodeCompiler
                 EmitConst(lit.Value, lit.Line);
                 break;
 
+            case GlobalObjRefExpr g:
+                EmitConst(ScriptValue.FromString("__ns:Obj"), g.Line);
+                EmitConst(ScriptValue.FromString(g.RefName), g.Line);
+                Emit(OpCode.CallMethod, AddConst(ScriptValue.FromString("Match")), 1, g.Line);
+                break;
+
             case ContextExpr ctx:
                 int cType = ctx.Kind switch
                 {
