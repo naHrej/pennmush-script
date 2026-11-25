@@ -22,6 +22,17 @@ public static class AttributeMarshal
         FlagInt, FlagFloat, FlagBool, FlagStr, FlagList, FlagMap, FlagObj
     };
 
+    public static readonly (string Flag, string ShortName)[] AllTypeFlagDefinitions =
+    {
+        (FlagInt, "int"),
+        (FlagFloat, "float"),
+        (FlagBool, "bool"),
+        (FlagStr, "str"),
+        (FlagList, "list"),
+        (FlagMap, "map"),
+        (FlagObj, "obj")
+    };
+
     public static ScriptValue FromAttribute(AttributeEntry attr)
     {
         string? typeFlag = GetTypeFlag(attr);
