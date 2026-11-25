@@ -40,6 +40,11 @@ public sealed class ScriptVm
         var fn = method.Functions[0];
         var locals = new ScriptValue[fn.LocalCount];
         Array.Fill(locals, ScriptValue.Null);
+        if (args != null)
+        {
+            for (int i = 0; i < fn.ParamCount && i < args.Count; i++)
+                locals[i] = args[i];
+        }
 
         _frames.Add(new VmCallFrame
         {
@@ -472,7 +477,10 @@ public sealed class ScriptVm
             }
             catch (ScriptRuntimeException ex)
             {
-                if (HandleException(ScriptValue.FromError(ex.Code), ex.Message, stopFrameDepth, out var faultRes))
+                string locMsg = ins.Line > 0
+                    ? $"at #{frame.TargetDbref}/{frame.MethodName} line {ins.Line}: {ex.Message}"
+                    : ex.Message;
+                if (HandleException(ScriptValue.FromError(ex.Code), locMsg, stopFrameDepth, out var faultRes))
                     return faultRes!;
             }
         }
@@ -496,6 +504,8 @@ public sealed class ScriptVm
         var fn = resolved.Bytecode.Functions[0];
         var locals = new ScriptValue[fn.LocalCount];
         Array.Fill(locals, ScriptValue.Null);
+        for (int i = 0; i < fn.ParamCount && i < args.Count; i++)
+            locals[i] = args[i];
 
         _frames.Add(new VmCallFrame
         {

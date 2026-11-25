@@ -149,6 +149,21 @@ public static class ScriptStdLib
                     case "Round": result = ScriptValue.FromInt((long)Math.Round(RequireArg(args, 0).AsFloat())); return true;
                     case "Sqrt": result = ScriptValue.FromFloat(Math.Sqrt(RequireArg(args, 0).AsFloat())); return true;
                     case "Pow": result = ScriptValue.FromFloat(Math.Pow(RequireArg(args, 0).AsFloat(), RequireArg(args, 1).AsFloat())); return true;
+                    case "Sin": result = ScriptValue.FromFloat(Math.Sin(RequireArg(args, 0).AsFloat())); return true;
+                    case "Cos": result = ScriptValue.FromFloat(Math.Cos(RequireArg(args, 0).AsFloat())); return true;
+                    case "Tan": result = ScriptValue.FromFloat(Math.Tan(RequireArg(args, 0).AsFloat())); return true;
+                    case "Log": result = ScriptValue.FromFloat(Math.Log(RequireArg(args, 0).AsFloat())); return true;
+                    case "Exp": result = ScriptValue.FromFloat(Math.Exp(RequireArg(args, 0).AsFloat())); return true;
+                    case "Clamp":
+                    {
+                        double val = RequireArg(args, 0).AsFloat();
+                        double lo = RequireArg(args, 1).AsFloat();
+                        double hi = RequireArg(args, 2).AsFloat();
+                        result = args[0].Type == ScriptValueType.Int && args[1].Type == ScriptValueType.Int && args[2].Type == ScriptValueType.Int
+                            ? ScriptValue.FromInt(Math.Clamp(args[0].AsInt(), args[1].AsInt(), args[2].AsInt()))
+                            : ScriptValue.FromFloat(Math.Clamp(val, lo, hi));
+                        return true;
+                    }
                 }
                 break;
 
@@ -248,6 +263,7 @@ public static class ScriptStdLib
                     case "Name": result = ScriptValue.FromString(bridge.GetObjectName(RequireArg(args, 0).AsObj())); return true;
                     case "Players": result = ScriptValue.FromList(bridge.GetPlayers().Select(ScriptValue.FromObj)); return true;
                     case "Connected": result = ScriptValue.FromList(bridge.GetConnectedPlayers().Select(ScriptValue.FromObj)); return true;
+                    case "Match": result = ScriptValue.FromObj(bridge.MatchObject(frame.ThisDbref, RequireArg(args, 0).AsString())); return true;
                 }
                 break;
 
@@ -270,6 +286,9 @@ public static class ScriptStdLib
                         return true;
                     case "Set":
                         bridge.SetSoftcodeAttr(frame.ThisDbref, RequireArg(args, 0).AsObj(), RequireArg(args, 1).AsString(), RequireArg(args, 2).ToDisplayString());
+                        return true;
+                    case "Command":
+                        bridge.DispatchCommand(frame.ThisDbref, RequireArg(args, 0).ToDisplayString());
                         return true;
                     case "Notify":
                         bridge.NotifyPlayer(RequireArg(args, 0).AsObj(), RequireArg(args, 1).ToDisplayString());
@@ -406,6 +425,48 @@ public static class ScriptStdLib
                 result = ScriptValue.FromList(b.ToImmutable());
                 return true;
             }
+            case "Any":
+            {
+                if (args.Count == 0) { result = ScriptValue.FromBool(!list.IsEmpty); return true; }
+                var fn = args[0];
+                bool any = false;
+                foreach (var item in list)
+                    if (vm.InvokeClosureSync(fn, new[] { item }).IsTruthy()) { any = true; break; }
+                result = ScriptValue.FromBool(any);
+                return true;
+            }
+            case "All":
+            {
+                var fn = RequireArg(args, 0);
+                bool all = true;
+                foreach (var item in list)
+                    if (!vm.InvokeClosureSync(fn, new[] { item }).IsTruthy()) { all = false; break; }
+                result = ScriptValue.FromBool(all);
+                return true;
+            }
+            case "Find":
+            {
+                var fn = RequireArg(args, 0);
+                foreach (var item in list)
+                    if (vm.InvokeClosureSync(fn, new[] { item }).IsTruthy()) { result = item; return true; }
+                result = ScriptValue.Null;
+                return true;
+            }
+            case "Reduce":
+            {
+                var acc = RequireArg(args, 0);
+                var fn = RequireArg(args, 1);
+                foreach (var item in list)
+                    acc = vm.InvokeClosureSync(fn, new[] { acc, item });
+                result = acc;
+                return true;
+            }
+            case "First":
+                result = list.IsEmpty ? ScriptValue.Null : list[0];
+                return true;
+            case "Last":
+                result = list.IsEmpty ? ScriptValue.Null : list[^1];
+                return true;
             case "Sort":
             {
                 var items = list.ToList();
@@ -449,6 +510,21 @@ public static class ScriptStdLib
             case "Set":
                 result = ScriptValue.FromMap(map.Set(RequireArg(args, 0), RequireArg(args, 1)));
                 return true;
+            case "Get":
+            {
+                var k = RequireArg(args, 0);
+                result = map.TryGetValue(k, out var mv) ? mv : (args.Count > 1 ? args[1] : ScriptValue.Null);
+                return true;
+            }
+            case "Merge":
+            {
+                var other = RequireArg(args, 0).AsMap();
+                var merged = map;
+                foreach (var k in other.Keys)
+                    merged = merged.Set(k, other.Entries[k]);
+                result = ScriptValue.FromMap(merged);
+                return true;
+            }
             default:
                 return false;
         }
@@ -482,6 +558,18 @@ public static class ScriptStdLib
                 return true;
             case "Contains":
                 result = ScriptValue.FromBool(s.Contains(RequireArg(args, 0).AsString(), StringComparison.Ordinal));
+                return true;
+            case "IndexOf":
+                result = ScriptValue.FromInt(s.IndexOf(RequireArg(args, 0).AsString(), StringComparison.Ordinal));
+                return true;
+            case "LastIndexOf":
+                result = ScriptValue.FromInt(s.LastIndexOf(RequireArg(args, 0).AsString(), StringComparison.Ordinal));
+                return true;
+            case "PadLeft":
+                result = ScriptValue.FromString(s.PadLeft((int)RequireArg(args, 0).AsInt(), args.Count > 1 && args[1].AsString().Length > 0 ? args[1].AsString()[0] : ' '));
+                return true;
+            case "PadRight":
+                result = ScriptValue.FromString(s.PadRight((int)RequireArg(args, 0).AsInt(), args.Count > 1 && args[1].AsString().Length > 0 ? args[1].AsString()[0] : ' '));
                 return true;
             case "Substring":
             {

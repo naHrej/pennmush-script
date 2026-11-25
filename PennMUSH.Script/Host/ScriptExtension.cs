@@ -43,6 +43,7 @@ public sealed class ScriptExtension : IExtension
 
         host.RegisterCommand(new ScriptCommandHandler(this), "@script");
         host.RegisterCommand(new ProgramCommandHandler(this), "@program", "@prog");
+        host.RegisterCommand(new PropCommandHandler(this), "@prop");
         host.RegisterFunction("SCRIPT", InvokeScriptFunction);
         host.OnObjectDestroyed(dbref => _store.DeleteObjectData(dbref.Value));
 
@@ -62,6 +63,18 @@ public sealed class ScriptExtension : IExtension
 
     internal ScriptStore Store => _store;
     internal IExtensionHost Host => _host;
+
+    internal bool CancelTask(string taskId)
+    {
+        bool removedTimer = false;
+        if (_pendingTimers.TryRemove(taskId, out var timer))
+        {
+            timer.Dispose();
+            removedTimer = true;
+        }
+        _store.DeleteSuspendedTask(taskId);
+        return removedTimer;
+    }
 
     private string InvokeScriptFunction(EvaluationContext ctx, string[] args)
     {
@@ -161,6 +174,62 @@ public sealed class ScriptExtension : IExtension
             var actor = db.GetObject(context.Executor);
             if (actor == null) return false;
 
+            if (context.Switches.Contains("PS", StringComparer.OrdinalIgnoreCase)
+                || context.Switches.Contains("TASKS", StringComparer.OrdinalIgnoreCase))
+            {
+                var tasks = _ext.Store.LoadSuspendedTasks();
+                if (tasks.Count == 0) { context.Notify("No suspended/scheduled script tasks."); return true; }
+                long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                foreach (var t in tasks)
+                {
+                    var top = t.Frames.Count > 0 ? t.Frames[^1] : null;
+                    double remSec = Math.Max(0, (t.ResumeAtMs - nowMs) / 1000.0);
+                    string target = top != null ? $"#{top.TargetDbref}/{top.MethodName}" : "<unknown>";
+                    context.Notify($"  {t.TaskId}  {target}  in {remSec:F1}s");
+                }
+                return true;
+            }
+
+            if (context.Switches.Contains("KILL", StringComparer.OrdinalIgnoreCase))
+            {
+                if (!actor.IsWizard) { context.Notify("Permission denied."); return false; }
+                string id = context.LeftArg.Trim();
+                if (string.IsNullOrEmpty(id)) { context.Notify("Usage: @script/kill <taskId>"); return false; }
+                bool canceled = _ext.CancelTask(id);
+                context.Notify(canceled ? $"Canceled script task {id}." : $"Task '{id}' not found.");
+                return canceled;
+            }
+
+            if (context.Switches.Contains("EVAL", StringComparer.OrdinalIgnoreCase))
+            {
+                if (!actor.IsWizard) { context.Notify("Permission denied."); return false; }
+                string code = context.Arguments.Trim();
+                if (string.IsNullOrEmpty(code)) { context.Notify("Usage: @script/eval <code>"); return false; }
+                if (!code.Contains(';') && !code.StartsWith("return ", StringComparison.Ordinal))
+                    code = $"return {code};";
+                try
+                {
+                    var compiled = BytecodeCompiler.Compile(code, context.Executor.Value, "<eval>");
+                    var vm = new ScriptVm(_ext._bridge);
+                    var res = vm.Execute(compiled, context.Executor.Value, context.Executor.Value, context.Enactor.Value);
+                    if (res.Status == VmExecutionStatus.Completed)
+                        context.Notify($"=> {res.ReturnValue.ToLiteralString()}");
+                    else if (res.Status == VmExecutionStatus.Suspended && res.SuspendedState != null)
+                    {
+                        _ext.ScheduleTask(res.SuspendedState);
+                        context.Notify($"=> <suspended:{res.SuspendedState.TaskId}>");
+                    }
+                    else
+                        context.Notify($"=> {res.ErrorCode}: {res.ErrorMessage}");
+                    return true;
+                }
+                catch (ScriptCompileException ex)
+                {
+                    context.Notify($"Compile error {ex.Message}");
+                    return false;
+                }
+            }
+
             if (context.Switches.Contains("LIST", StringComparer.OrdinalIgnoreCase))
             {
                 var target = db.MatchObject(context.Executor, context.LeftArg);
@@ -229,9 +298,21 @@ public sealed class ScriptExtension : IExtension
             var actor = db.GetObject(context.Executor);
             if (actor == null) return false;
 
-            if (!_ext.TryParseObjMethod(context.Executor, context.LeftArg, out var targetObj, out var methodName))
+            string left = context.LeftArg;
+            string[]? paramNames = null;
+            int openParen = left.IndexOf('(');
+            if (openParen > 0 && left.EndsWith(')'))
             {
-                context.Notify("Usage: @program <object>/<method>[=<access>]");
+                string paramPart = left[(openParen + 1)..^1].Trim();
+                left = left[..openParen].Trim();
+                paramNames = string.IsNullOrWhiteSpace(paramPart)
+                    ? Array.Empty<string>()
+                    : paramPart.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+
+            if (!_ext.TryParseObjMethod(context.Executor, left, out var targetObj, out var methodName))
+            {
+                context.Notify("Usage: @program <object>/<method>[(p1, p2)][=<access>]");
                 return false;
             }
 
@@ -271,7 +352,7 @@ public sealed class ScriptExtension : IExtension
                     string source = string.Join("\n", lines);
                     try
                     {
-                        var compiled = BytecodeCompiler.Compile(source, targetObj.Id.Value, methodName);
+                        var compiled = BytecodeCompiler.Compile(source, targetObj.Id.Value, methodName, paramNames);
                         _ext.Store.SaveMethod(targetObj.Id.Value, methodName, access, source, compiled);
                         _ext.Host.NotifyPlayer(context.Executor, $"Compiled and saved {targetObj.Name}/{methodName} ({lines.Count} lines).");
                     }
@@ -285,6 +366,101 @@ public sealed class ScriptExtension : IExtension
                 return true;
             });
 
+            return true;
+        }
+    }
+
+    private sealed class PropCommandHandler : ICommandHandler
+    {
+        private readonly ScriptExtension _ext;
+        public PropCommandHandler(ScriptExtension ext) => _ext = ext;
+        public string Name => "@prop";
+
+        public bool Execute(CommandContext context, ObjectDatabase db)
+        {
+            var actor = db.GetObject(context.Executor);
+            if (actor == null) return false;
+
+            if (!_ext.TryParseObjMethod(context.Executor, context.LeftArg, out var targetObj, out var attrName)
+                || string.IsNullOrWhiteSpace(context.RightArg))
+            {
+                context.Notify("Usage: @prop <object>/<attr>=<type>[:<value>]  (types: int, float, bool, str, list, map, obj, none)");
+                return false;
+            }
+
+            if (!Controls(actor, targetObj))
+            {
+                context.Notify("Permission denied.");
+                return false;
+            }
+
+            string right = context.RightArg.Trim();
+            int colon = right.IndexOf(':');
+            string typeToken = (colon >= 0 ? right[..colon] : right).Trim().ToLowerInvariant();
+            string? explicitVal = colon >= 0 ? right[(colon + 1)..] : null;
+
+            string? typeFlag = typeToken switch
+            {
+                "int" or "script_int" => AttributeMarshal.FlagInt,
+                "float" or "script_float" => AttributeMarshal.FlagFloat,
+                "bool" or "script_bool" => AttributeMarshal.FlagBool,
+                "str" or "string" or "script_str" => AttributeMarshal.FlagStr,
+                "list" or "script_list" => AttributeMarshal.FlagList,
+                "map" or "script_map" => AttributeMarshal.FlagMap,
+                "obj" or "script_obj" => AttributeMarshal.FlagObj,
+                "none" or "clear" => "",
+                _ => null
+            };
+
+            if (typeFlag == null)
+            {
+                context.Notify($"Unknown property type '{typeToken}'. Use: int, float, bool, str, list, map, obj, or none.");
+                return false;
+            }
+
+            var existing = targetObj.GetAttribute(attrName);
+            if (explicitVal != null || existing == null)
+            {
+                string val = explicitVal ?? typeFlag switch
+                {
+                    AttributeMarshal.FlagInt => "0",
+                    AttributeMarshal.FlagFloat => "0.0",
+                    AttributeMarshal.FlagBool => "false",
+                    AttributeMarshal.FlagList => "[]",
+                    AttributeMarshal.FlagMap => "{}",
+                    AttributeMarshal.FlagObj => "#-1",
+                    _ => ""
+                };
+                var err = targetObj.SetAttribute(attrName, val, context.Executor, wizardOverride: actor.IsWizard);
+                if (err != AttributeErrorCode.Okay)
+                {
+                    context.Notify($"Failed to set attribute: {err}");
+                    return false;
+                }
+                existing = targetObj.GetAttribute(attrName)!;
+            }
+
+            foreach (string f in AttributeMarshal.AllTypeFlags)
+                targetObj.RemoveAttributeCustomFlag(existing.Name, f);
+
+            if (typeFlag.Length > 0)
+            {
+                targetObj.AddAttributeCustomFlag(existing.Name, typeFlag);
+                try
+                {
+                    AttributeMarshal.FromAttribute(existing);
+                }
+                catch (ScriptRuntimeException ex)
+                {
+                    context.Notify($"Set {targetObj.Name}/{existing.Name} flag to {typeFlag} (warning: {ex.Message}).");
+                    return true;
+                }
+                context.Notify($"Set {targetObj.Name}/{existing.Name} type to {typeFlag}.");
+            }
+            else
+            {
+                context.Notify($"Cleared script type flag on {targetObj.Name}/{existing.Name}.");
+            }
             return true;
         }
     }
@@ -404,6 +580,7 @@ internal sealed class MushScriptBridge : IScriptHostBridge
     public string GetObjectName(int dbref) => _host.Database.GetObject(new Dbref(dbref))?.Name ?? "";
     public IReadOnlyList<int> GetPlayers() => _host.Database.GetAllObjects().Where(o => o.Type == ObjectType.Player).Select(o => o.Id.Value).ToList();
     public IReadOnlyList<int> GetConnectedPlayers() => _host.Database.GetAllObjects().Where(o => o.Type == ObjectType.Player && _host.Database.IsConnected(o.Id)).Select(o => o.Id.Value).ToList();
+    public int MatchObject(int executorDbref, string name) => _host.Database.MatchObject(new Dbref(executorDbref), name)?.Id.Value ?? -1;
 
     public string EvalSoftcode(int executorDbref, int enactorDbref, string expr)
         => _host.Evaluator.Evaluate(expr, new EvaluationContext(new Dbref(executorDbref), new Dbref(enactorDbref)));
@@ -430,6 +607,13 @@ internal sealed class MushScriptBridge : IScriptHostBridge
         var obj = _host.Database.GetObject(new Dbref(objDbref))
             ?? throw new ScriptRuntimeException(ScriptErrorCode.E_INVIND);
         obj.SetAttribute(attrName, value, new Dbref(executorDbref));
+    }
+
+    public void DispatchCommand(int executorDbref, string command)
+    {
+        var context = _host.Dispatcher.Dispatch(new Dbref(executorDbref), command, _host.Database);
+        foreach (var note in context.TargetedNotifications)
+            _host.BroadcastNotification(note);
     }
 
     public void NotifyPlayer(int playerDbref, string message) => _host.NotifyPlayer(new Dbref(playerDbref), message);

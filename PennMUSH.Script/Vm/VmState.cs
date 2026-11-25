@@ -185,11 +185,13 @@ public interface IScriptHostBridge
     string GetObjectName(int dbref);
     IReadOnlyList<int> GetPlayers();
     IReadOnlyList<int> GetConnectedPlayers();
+    int MatchObject(int executorDbref, string name);
 
     string EvalSoftcode(int executorDbref, int enactorDbref, string expr);
     string CallSoftcodeAttr(int executorDbref, int enactorDbref, int objDbref, string attrName, IReadOnlyList<ScriptValue> args);
     string GetSoftcodeAttr(int executorDbref, int objDbref, string attrName);
     void SetSoftcodeAttr(int executorDbref, int objDbref, string attrName, string value);
+    void DispatchCommand(int executorDbref, string command);
     void NotifyPlayer(int playerDbref, string message);
     void Log(string message);
     void ScheduleAfterTask(SuspendedTaskState taskState);

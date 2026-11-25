@@ -45,28 +45,31 @@ public sealed class BytecodeCompiler
     private readonly List<CompiledFunction> _functions = new();
     private FunctionScope _cur = null!;
 
-    public static CompiledMethod Compile(string source, int targetDbref = 0, string methodName = "<eval>")
+    public static CompiledMethod Compile(string source, int targetDbref = 0, string methodName = "<eval>", IReadOnlyList<string>? parameters = null)
     {
         var tokens = new Lexer(source).Tokenize();
         var stmts = new Parser(tokens).ParseProgram();
         var compiler = new BytecodeCompiler();
-        return compiler.CompileInternal(stmts, targetDbref, methodName);
+        return compiler.CompileInternal(stmts, targetDbref, methodName, parameters);
     }
 
-    private CompiledMethod CompileInternal(IReadOnlyList<Stmt> stmts, int targetDbref, string methodName)
+    private CompiledMethod CompileInternal(IReadOnlyList<Stmt> stmts, int targetDbref, string methodName, IReadOnlyList<string>? parameters)
     {
-        _cur = NewFunctionScope(null, methodName, 0);
+        var pList = parameters != null ? new List<string>(parameters) : new List<string>();
+        _cur = NewFunctionScope(null, methodName, pList.Count);
+        foreach (string p in pList)
+            DeclareLocal(p, isConst: false, line: 1);
         foreach (var stmt in stmts)
             CompileStmt(stmt);
         Emit(OpCode.PushNull, 0, 0, 0);
         Emit(OpCode.Return, 0, 0, 0);
-        _cur.Fn.GetType(); // keep
-        var mainFn = FinalizeScope(_cur);
+        FinalizeScope(_cur);
 
         return new CompiledMethod
         {
             TargetDbref = targetDbref,
             MethodName = methodName,
+            ParameterNames = pList,
             Functions = _functions
         };
     }
@@ -414,11 +417,10 @@ public sealed class BytecodeCompiler
                         Emit(OpCode.Pop, 0, 0, sw.Line);
                     }
                     int skipCase = EmitJump(OpCode.Jump, sw.Line);
+                    int bodyPopIp = CurrentIp;
+                    Emit(OpCode.Pop, 0, 0, sw.Line);
                     foreach (int mj in matchJumps)
-                    {
-                        PatchJump(mj);
-                        Emit(OpCode.Pop, 0, 0, sw.Line);
-                    }
+                        PatchJumpTo(mj, bodyPopIp);
                     foreach (var s in c.Body) CompileStmt(s);
                     caseBodyJumps.Add((EmitJump(OpCode.Jump, sw.Line), c.Body));
                     PatchJump(skipCase);
@@ -869,6 +871,23 @@ public sealed class BytecodeCompiler
                 else
                 {
                     CompileExpr(mem);
+                    CompileCompoundValue(asgn.Op, asgn.Value, asgn.Line);
+                }
+                Emit(OpCode.SetProp, 0, 0, asgn.Line);
+                break;
+            }
+
+            case DynamicMemberExpr dmem:
+            {
+                CompileExpr(dmem.Target);
+                CompileExpr(dmem.NameExpr);
+                if (asgn.Op == TokenKind.Assign)
+                {
+                    CompileExpr(asgn.Value);
+                }
+                else
+                {
+                    CompileExpr(dmem);
                     CompileCompoundValue(asgn.Op, asgn.Value, asgn.Line);
                 }
                 Emit(OpCode.SetProp, 0, 0, asgn.Line);
