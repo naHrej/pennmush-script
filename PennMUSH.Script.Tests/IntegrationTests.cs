@@ -37,9 +37,10 @@ public class IntegrationTests
                 var childObj = db.CreateObject("Child", ObjectType.Thing, god.Id);
                 childObj.AddParent(parentObj.Id);
 
-                // Typed attribute via custom AttributeFlags
-                childObj.SetAttribute("HP", "75", god.Id);
-                childObj.AddAttributeCustomFlag("HP", AttributeMarshal.FlagInt);
+                // Typed attribute via @prop command (auto-sets script_int flag)
+                var propCtx = server.Dispatcher.Dispatch(god.Id, $"@prop {childObj.Id}/HP=int:75", db);
+                Assert.Contains(propCtx.Notifications, n => n.Contains(AttributeMarshal.FlagInt, StringComparison.Ordinal));
+                Assert.True(childObj.GetAttribute("HP")!.HasCustomFlag(AttributeMarshal.FlagInt));
 
                 // Program Parent/Greet via @prog
                 var progParent = server.Dispatcher.Dispatch(god.Id, $"@prog {parentObj.Id}/Greet=public", db);

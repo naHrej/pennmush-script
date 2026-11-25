@@ -43,6 +43,7 @@ public sealed class ScriptExtension : IExtension
 
         host.RegisterCommand(new ScriptCommandHandler(this), "@script");
         host.RegisterCommand(new ProgramCommandHandler(this), "@program", "@prog");
+        host.RegisterCommand(new PropCommandHandler(this), "@prop");
         host.RegisterFunction("SCRIPT", InvokeScriptFunction);
         host.OnObjectDestroyed(dbref => _store.DeleteObjectData(dbref.Value));
 
@@ -285,6 +286,101 @@ public sealed class ScriptExtension : IExtension
                 return true;
             });
 
+            return true;
+        }
+    }
+
+    private sealed class PropCommandHandler : ICommandHandler
+    {
+        private readonly ScriptExtension _ext;
+        public PropCommandHandler(ScriptExtension ext) => _ext = ext;
+        public string Name => "@prop";
+
+        public bool Execute(CommandContext context, ObjectDatabase db)
+        {
+            var actor = db.GetObject(context.Executor);
+            if (actor == null) return false;
+
+            if (!_ext.TryParseObjMethod(context.Executor, context.LeftArg, out var targetObj, out var attrName)
+                || string.IsNullOrWhiteSpace(context.RightArg))
+            {
+                context.Notify("Usage: @prop <object>/<attr>=<type>[:<value>]  (types: int, float, bool, str, list, map, obj, none)");
+                return false;
+            }
+
+            if (!Controls(actor, targetObj))
+            {
+                context.Notify("Permission denied.");
+                return false;
+            }
+
+            string right = context.RightArg.Trim();
+            int colon = right.IndexOf(':');
+            string typeToken = (colon >= 0 ? right[..colon] : right).Trim().ToLowerInvariant();
+            string? explicitVal = colon >= 0 ? right[(colon + 1)..] : null;
+
+            string? typeFlag = typeToken switch
+            {
+                "int" or "script_int" => AttributeMarshal.FlagInt,
+                "float" or "script_float" => AttributeMarshal.FlagFloat,
+                "bool" or "script_bool" => AttributeMarshal.FlagBool,
+                "str" or "string" or "script_str" => AttributeMarshal.FlagStr,
+                "list" or "script_list" => AttributeMarshal.FlagList,
+                "map" or "script_map" => AttributeMarshal.FlagMap,
+                "obj" or "script_obj" => AttributeMarshal.FlagObj,
+                "none" or "clear" => "",
+                _ => null
+            };
+
+            if (typeFlag == null)
+            {
+                context.Notify($"Unknown property type '{typeToken}'. Use: int, float, bool, str, list, map, obj, or none.");
+                return false;
+            }
+
+            var existing = targetObj.GetAttribute(attrName);
+            if (explicitVal != null || existing == null)
+            {
+                string val = explicitVal ?? typeFlag switch
+                {
+                    AttributeMarshal.FlagInt => "0",
+                    AttributeMarshal.FlagFloat => "0.0",
+                    AttributeMarshal.FlagBool => "false",
+                    AttributeMarshal.FlagList => "[]",
+                    AttributeMarshal.FlagMap => "{}",
+                    AttributeMarshal.FlagObj => "#-1",
+                    _ => ""
+                };
+                var err = targetObj.SetAttribute(attrName, val, context.Executor, wizardOverride: actor.IsWizard);
+                if (err != AttributeErrorCode.Okay)
+                {
+                    context.Notify($"Failed to set attribute: {err}");
+                    return false;
+                }
+                existing = targetObj.GetAttribute(attrName)!;
+            }
+
+            foreach (string f in AttributeMarshal.AllTypeFlags)
+                targetObj.RemoveAttributeCustomFlag(existing.Name, f);
+
+            if (typeFlag.Length > 0)
+            {
+                targetObj.AddAttributeCustomFlag(existing.Name, typeFlag);
+                try
+                {
+                    AttributeMarshal.FromAttribute(existing);
+                }
+                catch (ScriptRuntimeException ex)
+                {
+                    context.Notify($"Set {targetObj.Name}/{existing.Name} flag to {typeFlag} (warning: {ex.Message}).");
+                    return true;
+                }
+                context.Notify($"Set {targetObj.Name}/{existing.Name} type to {typeFlag}.");
+            }
+            else
+            {
+                context.Notify($"Cleared script type flag on {targetObj.Name}/{existing.Name}.");
+            }
             return true;
         }
     }
