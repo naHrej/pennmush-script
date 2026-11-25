@@ -127,6 +127,24 @@ public class LanguageAndVmTests
         Assert.Equal(42, resumed.ReturnValue.AsInt());
     }
 
+    [Fact]
+    public void ListHelpers_MapMerge_And_StringIndex_Work()
+    {
+        var res = Run("""
+            var nums = [1, 2, 3, 4];
+            var total = nums.Reduce(0, (a, b) => a + b);
+            var hasEven = nums.Any(x => x % 2 == 0);
+            var allPos = nums.All(x => x > 0);
+            var firstBig = nums.Find(x => x > 2);
+            var merged = { "a": 1 }.Merge({ "b": 2 });
+            var idx = "hello world".IndexOf("world");
+            return $"{total}:{hasEven}:{allPos}:{firstBig}:{merged.Get("b", 0)}:{idx}";
+            """);
+
+        Assert.Equal(VmExecutionStatus.Completed, res.Status);
+        Assert.Equal("10:true:true:3:2:6", res.ReturnValue.AsString());
+    }
+
     private class NullBridge : IScriptHostBridge
     {
         public virtual ResolvedMethod? ResolveMethod(int targetDbref, string methodName, bool startAtParent = false) => null;
@@ -147,6 +165,7 @@ public class LanguageAndVmTests
         public string CallSoftcodeAttr(int executorDbref, int enactorDbref, int objDbref, string attrName, IReadOnlyList<ScriptValue> args) => "";
         public string GetSoftcodeAttr(int executorDbref, int objDbref, string attrName) => "";
         public void SetSoftcodeAttr(int executorDbref, int objDbref, string attrName, string value) { }
+        public void DispatchCommand(int executorDbref, string command) { }
         public void NotifyPlayer(int playerDbref, string message) { }
         public void Log(string message) { }
         public void ScheduleAfterTask(SuspendedTaskState taskState) { }

@@ -131,4 +131,69 @@ public class IntegrationTests
             try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
         }
     }
+
+    [Fact]
+    public void AccessModifiers_EnforceHostPermissions()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"pennmush_script_perm_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        string dbPath = Path.Combine(tempDir, "mush.db");
+
+        try
+        {
+            var server = new MUSHServer(dbPath);
+            var hostProxy = new ExtensionHostProxy(server.Extensions, server, "PennMUSH.Script");
+            var ext = new ScriptExtension();
+            ext.Initialize(hostProxy);
+
+            try
+            {
+                var db = server.Database;
+                var wiz = db.CreateObject("Wiz", ObjectType.Player, Dbref.Nothing);
+                wiz.Owner = wiz.Id;
+                wiz.AddFlag("WIZARD");
+
+                var mortal1 = db.CreateObject("Mortal1", ObjectType.Player, wiz.Id);
+                mortal1.Owner = mortal1.Id;
+                var mortal2 = db.CreateObject("Mortal2", ObjectType.Player, wiz.Id);
+                mortal2.Owner = mortal2.Id;
+
+                var hostObj = db.CreateObject("HostObj", ObjectType.Thing, mortal1.Id);
+                var sameOwnerObj = db.CreateObject("SameOwner", ObjectType.Thing, mortal1.Id);
+
+                // private (default): only hostObj itself
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prog {hostObj.Id}/Secret=private", db);
+                server.TryHandleCapturedInput(mortal1.Id, "return 1;");
+                server.TryHandleCapturedInput(mortal1.Id, ".");
+
+                // internal: same owner
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prog {hostObj.Id}/Team=internal", db);
+                server.TryHandleCapturedInput(mortal1.Id, "return 2;");
+                server.TryHandleCapturedInput(mortal1.Id, ".");
+
+                // protected: caller >= host perms (wiz >= mortal1)
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prog {hostObj.Id}/Prot=protected", db);
+                server.TryHandleCapturedInput(mortal1.Id, "return 3;");
+                server.TryHandleCapturedInput(mortal1.Id, ".");
+
+                Assert.Equal("1", server.Evaluator.Evaluate($"[script({hostObj.Id}/Secret)]", new EvaluationContext(hostObj.Id, hostObj.Id)));
+                Assert.Contains("PERMISSION DENIED", server.Evaluator.Evaluate($"[script({hostObj.Id}/Secret)]", new EvaluationContext(sameOwnerObj.Id, sameOwnerObj.Id)));
+
+                Assert.Equal("2", server.Evaluator.Evaluate($"[script({hostObj.Id}/Team)]", new EvaluationContext(sameOwnerObj.Id, sameOwnerObj.Id)));
+                Assert.Contains("PERMISSION DENIED", server.Evaluator.Evaluate($"[script({hostObj.Id}/Team)]", new EvaluationContext(mortal2.Id, mortal2.Id)));
+
+                Assert.Equal("3", server.Evaluator.Evaluate($"[script({hostObj.Id}/Prot)]", new EvaluationContext(wiz.Id, wiz.Id)));
+            }
+            finally
+            {
+                hostProxy.Cleanup();
+                ext.Shutdown();
+                server.Storage.Dispose();
+            }
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
 }

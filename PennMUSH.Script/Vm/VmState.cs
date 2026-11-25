@@ -190,6 +190,7 @@ public interface IScriptHostBridge
     string CallSoftcodeAttr(int executorDbref, int enactorDbref, int objDbref, string attrName, IReadOnlyList<ScriptValue> args);
     string GetSoftcodeAttr(int executorDbref, int objDbref, string attrName);
     void SetSoftcodeAttr(int executorDbref, int objDbref, string attrName, string value);
+    void DispatchCommand(int executorDbref, string command);
     void NotifyPlayer(int playerDbref, string message);
     void Log(string message);
     void ScheduleAfterTask(SuspendedTaskState taskState);

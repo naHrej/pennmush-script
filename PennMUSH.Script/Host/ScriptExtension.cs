@@ -528,6 +528,9 @@ internal sealed class MushScriptBridge : IScriptHostBridge
         obj.SetAttribute(attrName, value, new Dbref(executorDbref));
     }
 
+    public void DispatchCommand(int executorDbref, string command)
+        => _host.Dispatcher.Dispatch(new Dbref(executorDbref), command, _host.Database);
+
     public void NotifyPlayer(int playerDbref, string message) => _host.NotifyPlayer(new Dbref(playerDbref), message);
     public void Log(string message) => _host.Log(message);
     public void ScheduleAfterTask(SuspendedTaskState taskState) => _scheduleAfter(taskState);
