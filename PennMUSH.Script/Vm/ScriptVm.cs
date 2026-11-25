@@ -40,6 +40,11 @@ public sealed class ScriptVm
         var fn = method.Functions[0];
         var locals = new ScriptValue[fn.LocalCount];
         Array.Fill(locals, ScriptValue.Null);
+        if (args != null)
+        {
+            for (int i = 0; i < fn.ParamCount && i < args.Count; i++)
+                locals[i] = args[i];
+        }
 
         _frames.Add(new VmCallFrame
         {
@@ -496,6 +501,8 @@ public sealed class ScriptVm
         var fn = resolved.Bytecode.Functions[0];
         var locals = new ScriptValue[fn.LocalCount];
         Array.Fill(locals, ScriptValue.Null);
+        for (int i = 0; i < fn.ParamCount && i < args.Count; i++)
+            locals[i] = args[i];
 
         _frames.Add(new VmCallFrame
         {

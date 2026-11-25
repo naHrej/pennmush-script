@@ -230,9 +230,21 @@ public sealed class ScriptExtension : IExtension
             var actor = db.GetObject(context.Executor);
             if (actor == null) return false;
 
-            if (!_ext.TryParseObjMethod(context.Executor, context.LeftArg, out var targetObj, out var methodName))
+            string left = context.LeftArg;
+            string[]? paramNames = null;
+            int openParen = left.IndexOf('(');
+            if (openParen > 0 && left.EndsWith(')'))
             {
-                context.Notify("Usage: @program <object>/<method>[=<access>]");
+                string paramPart = left[(openParen + 1)..^1].Trim();
+                left = left[..openParen].Trim();
+                paramNames = string.IsNullOrWhiteSpace(paramPart)
+                    ? Array.Empty<string>()
+                    : paramPart.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+
+            if (!_ext.TryParseObjMethod(context.Executor, left, out var targetObj, out var methodName))
+            {
+                context.Notify("Usage: @program <object>/<method>[(p1, p2)][=<access>]");
                 return false;
             }
 
@@ -272,7 +284,7 @@ public sealed class ScriptExtension : IExtension
                     string source = string.Join("\n", lines);
                     try
                     {
-                        var compiled = BytecodeCompiler.Compile(source, targetObj.Id.Value, methodName);
+                        var compiled = BytecodeCompiler.Compile(source, targetObj.Id.Value, methodName, paramNames);
                         _ext.Store.SaveMethod(targetObj.Id.Value, methodName, access, source, compiled);
                         _ext.Host.NotifyPlayer(context.Executor, $"Compiled and saved {targetObj.Name}/{methodName} ({lines.Count} lines).");
                     }

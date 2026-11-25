@@ -183,6 +183,22 @@ public class IntegrationTests
                 Assert.Contains("PERMISSION DENIED", server.Evaluator.Evaluate($"[script({hostObj.Id}/Team)]", new EvaluationContext(mortal2.Id, mortal2.Id)));
 
                 Assert.Equal("3", server.Evaluator.Evaluate($"[script({hostObj.Id}/Prot)]", new EvaluationContext(wiz.Id, wiz.Id)));
+
+                // Named parameters via @prog obj/Method(a, b)=public + after (0.05) { ... }
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prop {hostObj.Id}/HP=int:10", db);
+                server.Dispatcher.Dispatch(mortal1.Id, $"@prog {hostObj.Id}/AddAndDelay(a, b)=public", db);
+                server.TryHandleCapturedInput(mortal1.Id, "after (0.05) { this.HP = 555; }");
+                server.TryHandleCapturedInput(mortal1.Id, "return ToInt(a) + ToInt(b);");
+                server.TryHandleCapturedInput(mortal1.Id, ".");
+
+                string sumOut = server.Evaluator.Evaluate($"[script({hostObj.Id}/AddAndDelay, 12, 30)]", new EvaluationContext(wiz.Id, wiz.Id));
+                Assert.Equal("42", sumOut);
+
+                // Wait briefly for after() timer to fire
+                var deadline = DateTime.UtcNow.AddSeconds(2);
+                while (hostObj.GetAttribute("HP")!.Value != "555" && DateTime.UtcNow < deadline)
+                    System.Threading.Thread.Sleep(25);
+                Assert.Equal("555", hostObj.GetAttribute("HP")!.Value);
             }
             finally
             {

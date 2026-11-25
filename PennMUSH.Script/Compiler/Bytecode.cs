@@ -104,6 +104,7 @@ public sealed class CompiledMethod
     public int CompilerVersion { get; init; } = CurrentCompilerVersion;
     public int TargetDbref { get; init; }
     public string MethodName { get; init; } = "";
+    public List<string> ParameterNames { get; init; } = new();
     public List<CompiledFunction> Functions { get; init; } = new();
 
     public string ToJson()
@@ -114,6 +115,10 @@ public sealed class CompiledMethod
         w.WriteNumber("v", CompilerVersion);
         w.WriteNumber("d", TargetDbref);
         w.WriteString("m", MethodName);
+        w.WriteStartArray("pn");
+        foreach (var pn in ParameterNames)
+            w.WriteStringValue(pn);
+        w.WriteEndArray();
         w.WriteStartArray("f");
         foreach (var fn in Functions)
         {
@@ -191,11 +196,17 @@ public sealed class CompiledMethod
             funcs.Add(fn);
         }
 
+        var paramNames = new List<string>();
+        if (root.TryGetProperty("pn", out var pnArr))
+            foreach (var p in pnArr.EnumerateArray())
+                paramNames.Add(p.GetString() ?? "");
+
         return new CompiledMethod
         {
             CompilerVersion = root.GetProperty("v").GetInt32(),
             TargetDbref = root.GetProperty("d").GetInt32(),
             MethodName = root.GetProperty("m").GetString() ?? "",
+            ParameterNames = paramNames,
             Functions = funcs
         };
     }

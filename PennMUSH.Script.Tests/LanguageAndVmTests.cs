@@ -145,6 +145,24 @@ public class LanguageAndVmTests
         Assert.Equal("10:true:true:3:2:6", res.ReturnValue.AsString());
     }
 
+    [Fact]
+    public void Json_Base64_Regex_Crypto_And_NamedParams_Work()
+    {
+        var compiled = BytecodeCompiler.Compile("""
+            var parsed = Json.Parse("{\"k\":42}");
+            var json = Json.Stringify({ "x": parsed["k"] });
+            var b64 = Base64.Decode(Base64.Encode("hi"));
+            var m = Regex.Match("abc123", "[0-9]+");
+            var hash = Crypto.Sha256("test");
+            return $"{who}:{amount}:{json}:{b64}:{m[0]}:{hash.Substring(0, 8)}";
+            """, 1, "Named", new[] { "who", "amount" });
+
+        var vm = new ScriptVm(new NullBridge());
+        var res = vm.Execute(compiled, 1, 1, 1, new[] { ScriptValue.FromString("Bob"), ScriptValue.FromInt(7) });
+        Assert.Equal(VmExecutionStatus.Completed, res.Status);
+        Assert.Equal("Bob:7:{\"x\":42}:hi:123:9f86d081", res.ReturnValue.AsString());
+    }
+
     private class NullBridge : IScriptHostBridge
     {
         public virtual ResolvedMethod? ResolveMethod(int targetDbref, string methodName, bool startAtParent = false) => null;
