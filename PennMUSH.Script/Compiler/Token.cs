@@ -1,0 +1,109 @@
+namespace PennMUSH.Script.Compiler;
+
+using PennMUSH.Script.Runtime;
+
+public enum TokenKind
+{
+    Eof = 0,
+    Identifier,
+    IntLiteral,
+    FloatLiteral,
+    StringLiteral,
+    InterpStart,
+    InterpText,
+    InterpExprStart,
+    InterpExprEnd,
+    InterpEnd,
+    ObjLiteral,
+    ErrorLiteral,
+
+    // Keywords
+    Var,
+    Const,
+    True,
+    False,
+    Null,
+    If,
+    Else,
+    For,
+    Foreach,
+    In,
+    While,
+    Switch,
+    Case,
+    Default,
+    Break,
+    Continue,
+    Return,
+    Try,
+    Catch,
+    Finally,
+    Throw,
+    After,
+    Is,
+    This,
+    Caller,
+    Player,
+    Args,
+    Base,
+
+    // Delimiters
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    Comma,
+    Semicolon,
+    Colon,
+    Dot,
+    QuestionDot,
+    DotDot,
+    Spread, // ...
+
+    // Operators
+    Assign,
+    PlusAssign,
+    MinusAssign,
+    StarAssign,
+    SlashAssign,
+    PercentAssign,
+    QuestionQuestionAssign,
+    Arrow, // =>
+    Question,
+    QuestionQuestion, // ??
+    OrOr,
+    AndAnd,
+    Pipe,
+    Caret,
+    Amp,
+    EqEq,
+    BangEq,
+    Lt,
+    LtEq,
+    Gt,
+    GtEq,
+    Shl,
+    Shr,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Power, // **
+    Bang,
+    Tilde,
+    PlusPlus,
+    MinusMinus
+}
+
+public readonly record struct Token(
+    TokenKind Kind,
+    string Lexeme,
+    int Line,
+    int Column,
+    long IntValue = 0,
+    double FloatValue = 0,
+    int ObjValue = 0,
+    ScriptErrorCode ErrorValue = ScriptErrorCode.E_NONE);

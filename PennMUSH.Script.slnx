@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PennMUSH.Script/PennMUSH.Script.csproj" />
+  <Project Path="PennMUSH.Script.Tests/PennMUSH.Script.Tests.csproj" />
+</Solution>
