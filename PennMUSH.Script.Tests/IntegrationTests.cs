@@ -216,6 +216,13 @@ public class IntegrationTests
                 var killCtx = server.Dispatcher.Dispatch(wiz.Id, $"@script/kill {taskId}", db);
                 Assert.Contains(killCtx.Notifications, n => n.Contains("Canceled", StringComparison.Ordinal));
                 Assert.Empty(ext.Store.LoadSuspendedTasks());
+
+                // @script/eval (Wizard-only)
+                var evalCmd = server.Dispatcher.Dispatch(wiz.Id, "@script/eval [1, 2, 3].Map(x => x * 10)", db);
+                Assert.Contains(evalCmd.Notifications, n => n == "=> [10, 20, 30]");
+
+                var deniedEval = server.Dispatcher.Dispatch(mortal1.Id, "@script/eval 1 + 1", db);
+                Assert.Contains("Permission denied.", deniedEval.Notifications);
             }
             finally
             {

@@ -200,6 +200,36 @@ public sealed class ScriptExtension : IExtension
                 return canceled;
             }
 
+            if (context.Switches.Contains("EVAL", StringComparer.OrdinalIgnoreCase))
+            {
+                if (!actor.IsWizard) { context.Notify("Permission denied."); return false; }
+                string code = context.Arguments.Trim();
+                if (string.IsNullOrEmpty(code)) { context.Notify("Usage: @script/eval <code>"); return false; }
+                if (!code.Contains(';') && !code.StartsWith("return ", StringComparison.Ordinal))
+                    code = $"return {code};";
+                try
+                {
+                    var compiled = BytecodeCompiler.Compile(code, context.Executor.Value, "<eval>");
+                    var vm = new ScriptVm(_ext._bridge);
+                    var res = vm.Execute(compiled, context.Executor.Value, context.Executor.Value, context.Enactor.Value);
+                    if (res.Status == VmExecutionStatus.Completed)
+                        context.Notify($"=> {res.ReturnValue.ToLiteralString()}");
+                    else if (res.Status == VmExecutionStatus.Suspended && res.SuspendedState != null)
+                    {
+                        _ext.ScheduleTask(res.SuspendedState);
+                        context.Notify($"=> <suspended:{res.SuspendedState.TaskId}>");
+                    }
+                    else
+                        context.Notify($"=> {res.ErrorCode}: {res.ErrorMessage}");
+                    return true;
+                }
+                catch (ScriptCompileException ex)
+                {
+                    context.Notify($"Compile error {ex.Message}");
+                    return false;
+                }
+            }
+
             if (context.Switches.Contains("LIST", StringComparer.OrdinalIgnoreCase))
             {
                 var target = db.MatchObject(context.Executor, context.LeftArg);

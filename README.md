@@ -17,6 +17,7 @@ A sandboxed, C#-idiomatic MUSH scripting DSL extension (`IExtension`) for `pennm
 - `@script <object>/<method>=<access>` (`private`, `protected`, `internal`, `public`)
 - `@script/list <object>`, `@script/view <object>/<method>`, `@script/del <object>/<method>`
 - `@script/ps` (or `@script/tasks`), `@script/kill <taskId>` — inspect or cancel pending `after()` / `Sleep()` tasks
+- `@script/eval <code>` — Wizard-only immediate expression/statement evaluation
 
 ## Build & Test
 ```powershell

@@ -163,6 +163,40 @@ public class LanguageAndVmTests
         Assert.Equal("Bob:7:{\"x\":42}:hi:123:9f86d081", res.ReturnValue.AsString());
     }
 
+    [Fact]
+    public void ForLoop_SwitchFallthrough_Finally_And_NullConditional_Work()
+    {
+        var res = Run("""
+            var total = 0;
+            for (var i = 0; i < 6; i++) {
+                if (i == 1) continue;
+                if (i == 5) break;
+                switch (i) {
+                    case 0:
+                    case 2:
+                        total += 10;
+                        break;
+                    default:
+                        total += i;
+                        break;
+                }
+            }
+            var ranFinally = false;
+            try {
+                total += 1;
+            } finally {
+                ranFinally = true;
+            }
+            string n = null;
+            var safe = n?.ToUpper() ?? "none";
+            return $"{total}:{ranFinally}:{safe}";
+            """);
+
+        Assert.Equal(VmExecutionStatus.Completed, res.Status);
+        // i=0 (+10), i=2 (+10), i=3 (+3), i=4 (+4), +1 in try = 28
+        Assert.Equal("28:true:none", res.ReturnValue.AsString());
+    }
+
     private class NullBridge : IScriptHostBridge
     {
         public virtual ResolvedMethod? ResolveMethod(int targetDbref, string methodName, bool startAtParent = false) => null;

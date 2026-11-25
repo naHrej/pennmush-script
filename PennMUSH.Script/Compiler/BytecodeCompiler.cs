@@ -417,11 +417,10 @@ public sealed class BytecodeCompiler
                         Emit(OpCode.Pop, 0, 0, sw.Line);
                     }
                     int skipCase = EmitJump(OpCode.Jump, sw.Line);
+                    int bodyPopIp = CurrentIp;
+                    Emit(OpCode.Pop, 0, 0, sw.Line);
                     foreach (int mj in matchJumps)
-                    {
-                        PatchJump(mj);
-                        Emit(OpCode.Pop, 0, 0, sw.Line);
-                    }
+                        PatchJumpTo(mj, bodyPopIp);
                     foreach (var s in c.Body) CompileStmt(s);
                     caseBodyJumps.Add((EmitJump(OpCode.Jump, sw.Line), c.Body));
                     PatchJump(skipCase);
