@@ -3,6 +3,7 @@ namespace PennMUSH.Script.Tests;
 using System;
 using System.IO;
 using PennMUSH.Core.Attributes;
+using PennMUSH.Core.Commands;
 using PennMUSH.Core.MUSHcode;
 using PennMUSH.Core.Types;
 using PennMUSH.Script.Host;
@@ -77,6 +78,51 @@ public class IntegrationTests
             {
                 hostProxy.Cleanup();
                 ext.Shutdown();
+                server.Storage.Dispose();
+            }
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DynamicPlugin_LoadAndUnload_WorksCleanly()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"pennmush_script_alc_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        string dbPath = Path.Combine(tempDir, "mush.db");
+        string dllPath = Path.Combine(AppContext.BaseDirectory, "PennMUSH.Script.dll");
+        Assert.True(File.Exists(dllPath), $"Expected {dllPath} to exist.");
+
+        try
+        {
+            var server = new MUSHServer(dbPath);
+            try
+            {
+                var record = server.Extensions.LoadExtension(dllPath);
+                Assert.NotNull(record);
+                Assert.True(server.Extensions.IsLoaded("PennMUSH.Script"));
+
+                Assert.Equal(CommandLookupStatus.Found, server.Dispatcher.Table.Lookup("@script").Status);
+                Assert.Equal(CommandLookupStatus.Found, server.Dispatcher.Table.Lookup("@program").Status);
+                Assert.Equal(CommandLookupStatus.Found, server.Dispatcher.Table.Lookup("@prog").Status);
+                Assert.Equal(CommandLookupStatus.Found, server.Dispatcher.Table.Lookup("@prop").Status);
+                Assert.True(server.Functions.HasFunction("SCRIPT"));
+                Assert.True(StandardAttributes.IsCustomFlag(AttributeMarshal.FlagInt));
+
+                bool unloaded = server.Extensions.UnloadExtension("PennMUSH.Script");
+                Assert.True(unloaded);
+                Assert.False(server.Extensions.IsLoaded("PennMUSH.Script"));
+                Assert.Equal(CommandLookupStatus.NotFound, server.Dispatcher.Table.Lookup("@script").Status);
+                Assert.Equal(CommandLookupStatus.NotFound, server.Dispatcher.Table.Lookup("@prog").Status);
+                Assert.Equal(CommandLookupStatus.NotFound, server.Dispatcher.Table.Lookup("@prop").Status);
+                Assert.False(server.Functions.HasFunction("SCRIPT"));
+                Assert.False(StandardAttributes.IsCustomFlag(AttributeMarshal.FlagInt));
+            }
+            finally
+            {
                 server.Storage.Dispose();
             }
         }
